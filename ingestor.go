@@ -6,23 +6,8 @@ import (
 	"os"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"go.mongodb.org/mongo-driver/bson"
 	"gopkg.in/yaml.v2"
-)
-
-var (
-	messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
-		fmt.Printf("Received message: %s from topic: %s\n", msg.Payload(), msg.Topic())
-	}
-
-	connectedHandler mqtt.OnConnectHandler = func(client mqtt.Client) {
-		fmt.Println("Connected")
-		sub(client, "sensor/dht22-1", messagePubHandler)
-
-	}
-
-	connectionLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err error) {
-		fmt.Printf("Connection lost: %v\n", err)
-	}
 )
 
 type Config struct {
@@ -32,9 +17,24 @@ type Config struct {
 	ClientPassword string `yaml:"client_password"`
 	ClientUserName string `yaml:"client_username"`
 	TargetTopic    string `yaml:"target_topic"`
+	DBUri          string `yaml:"db_uri"`
 }
 
+var (
+	messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
+		fmt.Printf("Received message: %s from topic: %s\n", msg.Payload(), msg.Topic())
+	}
+	connectedHandler mqtt.OnConnectHandler = func(client mqtt.Client) {
+		fmt.Println("Connected")
+
+	}
+	connectionLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err error) {
+		fmt.Printf("Connection lost: %v\n", err)
+	}
+)
+
 func main() {
+
 	cfgData, err := os.ReadFile("config.yaml")
 	if err != nil {
 		log.Fatal(err)
@@ -62,6 +62,20 @@ func main() {
 		panic(token.Error())
 	}
 
+	//sub(client, "sensor/dht22-1", messagePubHandler)
+
+	dbClient, err := get_client(cfg.DBUri)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = dbClient.insert_doc_to_collection("sensordatas", "dht22", bson.D{{Key: "temperature", Value: 10}, {Key: "humidity", Value: 20}})
+
+	if err != nil {
+		fmt.Println("error db")
+		log.Fatal(err)
+	}
 	for {
 	}
 }
