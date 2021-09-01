@@ -11,27 +11,18 @@ import (
 )
 
 type Config struct {
-	BrokerAddress  string `yaml:"broker_address"`
-	BrokerPort     int    `yaml:"broker_port"`
-	ClientId       string `yaml:"client_id"`
-	ClientPassword string `yaml:"client_password"`
-	ClientUserName string `yaml:"client_username"`
-	TargetTopic    string `yaml:"target_topic"`
-	DBUri          string `yaml:"db_uri"`
+	BrokerAddress    string `yaml:"broker_address"`
+	BrokerPort       int    `yaml:"broker_port"`
+	ClientId         string `yaml:"client_id"`
+	ClientPassword   string `yaml:"client_password"`
+	ClientUserName   string `yaml:"client_username"`
+	TargetTopic      string `yaml:"target_topic"`
+	DBUri            string `yaml:"db_uri"`
+	TargetDB         string `yaml:"target_db"`
+	TargetCollection string `yaml:"target_collection"`
 }
 
-var (
-	messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
-		fmt.Printf("Received message: %s from topic: %s\n", msg.Payload(), msg.Topic())
-	}
-	connectedHandler mqtt.OnConnectHandler = func(client mqtt.Client) {
-		fmt.Println("Connected")
-
-	}
-	connectionLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err error) {
-		fmt.Printf("Connection lost: %v\n", err)
-	}
-)
+var config Config
 
 func main() {
 
@@ -39,22 +30,27 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	cfg := Config{
-		BrokerPort: 1883,
+
+	// default config
+	config = Config{
+		BrokerPort:       1883,
+		TargetDB:         "test",
+		TargetCollection: "test",
 	}
-	err = yaml.Unmarshal(cfgData, &cfg)
+
+	err = yaml.Unmarshal(cfgData, &config)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	broker := cfg.BrokerAddress
-	port := cfg.BrokerPort
+	// mqtt client
+	broker := config.BrokerAddress
+	port := config.BrokerPort
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(fmt.Sprintf("mqtt://%s:%d", broker, port))
-	opts.SetClientID(cfg.ClientId)
-	opts.SetUsername(cfg.ClientUserName)
-	opts.SetPassword(cfg.ClientPassword)
-	opts.SetDefaultPublishHandler(messagePubHandler)
+	opts.SetClientID(config.ClientId)
+	opts.SetUsername(config.ClientUserName)
+	opts.SetPassword(config.ClientPassword)
 	opts.OnConnect = connectedHandler
 	opts.OnConnectionLost = connectionLostHandler
 	client := mqtt.NewClient(opts)
@@ -62,26 +58,56 @@ func main() {
 		panic(token.Error())
 	}
 
-	//sub(client, "sensor/dht22-1", messagePubHandler)
-
-	dbClient, err := get_client(cfg.DBUri)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	err = dbClient.insert_doc_to_collection("sensordatas", "dht22", bson.D{{Key: "temperature", Value: 10}, {Key: "humidity", Value: 20}})
-
-	if err != nil {
-		fmt.Println("error db")
-		log.Fatal(err)
-	}
+	// run forever
 	for {
 	}
 }
 
+// subscribes client to target topic
 func sub(client mqtt.Client, targetTopic string, msgHandler mqtt.MessageHandler) {
 	token := client.Subscribe(targetTopic, 1, msgHandler)
 	token.Wait()
 	fmt.Printf("Subscribed to topic: %s", targetTopic)
 }
+
+// client handlers
+var (
+	connectedHandler mqtt.OnConnectHandler = func(client mqtt.Client) {
+		fmt.Println("Connected")
+		sub(client, config.TargetTopic, messagePubHandler)
+	}
+
+	connectionLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err error) {
+		fmt.Printf("Connection lost: %v\n", err)
+	}
+
+	messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
+		fmt.Printf("Received message: %s from topic: %s\nInserting Message...\n", msg.Payload(), msg.Topic())
+
+		var bSensorDoc interface{}
+		err := bson.UnmarshalExtJSON(msg.Payload(), true, &bSensorDoc)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		dbClient, err := get_client(config.DBUri)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = dbClient.insertDocToCollection(
+			config.TargetDB,
+			config.TargetCollection,
+			bSensorDoc,
+		)
+
+		if err != nil {
+			fmt.Println("Error inserting incoming msg to db")
+		} else {
+			fmt.Println("Successfully inserted incoming msg to db")
+		}
+
+		dbClient.disconnect()
+	}
+)

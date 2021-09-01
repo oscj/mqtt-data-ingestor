@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -27,16 +26,16 @@ func get_client(uri string) (*MongoClient, error) {
 	return &MongoClient{client}, nil
 }
 
-func (client *MongoClient) disconnect_client() {
+func (client *MongoClient) disconnect() {
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	client.Disconnect(ctx)
 }
 
-func (client *MongoClient) insert_doc_to_collection(database string, collection string, doc bson.D) error {
-	sensorDatabase := client.Database(database)
-	weatherSensorCollection := sensorDatabase.Collection(collection)
+func (client *MongoClient) insertDocToCollection(database string, collection string, doc interface{}) error {
+	db := client.Database(database)
+	col := db.Collection(collection)
 
-	_, err := weatherSensorCollection.InsertOne(context.Background(), doc)
+	_, err := col.InsertOne(context.Background(), doc)
 
 	if err != nil {
 		return err
