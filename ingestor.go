@@ -40,6 +40,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	dbClient, err := GetDbClient(config.DBUri)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// mqtt client
 	broker := config.BrokerAddress
 	port := config.BrokerPort
@@ -48,8 +53,8 @@ func main() {
 	opts.SetClientID(config.ClientId)
 	opts.SetUsername(config.ClientUserName)
 	opts.SetPassword(config.ClientPassword)
-	opts.OnConnect = MakeConnectedHandler(config)
-	opts.OnConnectionLost = MakeConnectionLostHandler()
+	opts.OnConnectionLost = MakeConnectionLostHandler(*dbClient)
+	opts.OnConnect = MakeConnectedHandler(config, *dbClient)
 	client := mqtt.NewClient(opts)
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
 		panic(token.Error())

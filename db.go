@@ -13,7 +13,7 @@ type MongoClient struct {
 }
 
 // initializer
-func get_client(uri string) (*MongoClient, error) {
+func GetDbClient(uri string) (*MongoClient, error) {
 	client, err := mongo.NewClient(options.Client().ApplyURI(uri))
 	if err != nil {
 		return nil, err
